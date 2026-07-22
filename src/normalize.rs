@@ -109,7 +109,10 @@ mod tests {
 
     #[test]
     fn npm_run_drops_script_options() {
-        assert_eq!(normalize("npm run dev --port 3000")[0].normalized, "npm run");
+        assert_eq!(
+            normalize("npm run dev --port 3000")[0].normalized,
+            "npm run"
+        );
     }
 
     #[test]

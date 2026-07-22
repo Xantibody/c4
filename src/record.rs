@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -7,7 +7,7 @@ use crate::normalize::normalize;
 
 /// 永続化する1行1レコードのフラット構造。
 /// CSV / DuckDB / SQLite での集計を想定し、ネストさせない。
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct NormalizedLog {
     /// 実行日時 (ISO8601 UTC)
     pub timestamp: String,
@@ -58,7 +58,10 @@ mod tests {
 
     #[test]
     fn builds_flat_records_with_utc_timestamp() {
-        let records = build_records(&bash_event("git commit -m secret && ls"), datetime!(2026-07-22 03:00:00 UTC));
+        let records = build_records(
+            &bash_event("git commit -m secret && ls"),
+            datetime!(2026-07-22 03:00:00 UTC),
+        );
         assert_eq!(
             records,
             vec![
@@ -86,6 +89,9 @@ mod tests {
             r#"{"hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"command":"x"}}"#,
         )
         .unwrap();
-        assert_eq!(build_records(&event, datetime!(2026-07-22 03:00:00 UTC)), vec![]);
+        assert_eq!(
+            build_records(&event, datetime!(2026-07-22 03:00:00 UTC)),
+            vec![]
+        );
     }
 }
