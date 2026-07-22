@@ -8,7 +8,8 @@ pub struct NormalizedCommand {
     pub normalized: String,
 }
 
-/// サブコマンドを持つ主要CLI。第2トークンをsub_commandとして扱う。
+/// サブコマンドを持つ主要CLI。グローバルオプションを読み飛ばした
+/// 最初の非フラグトークンをsub_commandとして扱う。
 const SUBCOMMAND_CLIS: &[&str] = &[
     "git", "npm", "pnpm", "yarn", "docker", "cargo", "aws", "kubectl", "gh", "go", "nix", "just",
 ];
@@ -65,11 +66,7 @@ fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
         .position(|t| !is_env_assignment(t))
         .unwrap_or(tokens.len())..];
     let base = tokens.first()?;
-    let sub = if SUBCOMMAND_CLIS.contains(&base.as_str()) {
-        tokens.get(1).filter(|t| !t.starts_with('-')).cloned()
-    } else {
-        None
-    };
+    let sub = find_subcommand(base, &tokens[1..]);
     let normalized = match &sub {
         Some(sub) => format!("{base} {sub}"),
         None => base.clone(),
@@ -80,6 +77,59 @@ fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
         flags: collect_flags(&tokens[1..]),
         normalized,
     })
+}
+
+/// サブコマンドより前に置かれ、値を別トークンで取るグローバルフラグ。
+/// これを知らないと `git -C /path commit` の /path をサブコマンドと
+/// 誤認するか、commit を見逃す。
+fn value_taking_global_flags(base: &str) -> &'static [&'static str] {
+    match base {
+        "git" => &[
+            "-C",
+            "-c",
+            "--git-dir",
+            "--work-tree",
+            "--namespace",
+            "--exec-path",
+        ],
+        "docker" => &["-H", "--host", "--context", "--config", "-l", "--log-level"],
+        "kubectl" => &[
+            "-n",
+            "--namespace",
+            "--context",
+            "--kubeconfig",
+            "--cluster",
+            "--user",
+            "-s",
+            "--server",
+        ],
+        "npm" | "pnpm" | "yarn" => &["--prefix", "-C", "--dir"],
+        "cargo" => &["--color", "--config", "-Z"],
+        "just" => &["-f", "--justfile", "-d", "--working-directory"],
+        "nix" => &["--option", "--log-format"],
+        _ => &[],
+    }
+}
+
+/// サブコマンドを探す。グローバルフラグ（値取りは値ごと）を
+/// 読み飛ばし、最初の非フラグトークンをサブコマンドとする。
+fn find_subcommand(base: &str, tokens: &[String]) -> Option<String> {
+    if !SUBCOMMAND_CLIS.contains(&base) {
+        return None;
+    }
+    let value_flags = value_taking_global_flags(base);
+    let mut iter = tokens.iter();
+    while let Some(token) = iter.next() {
+        if value_flags.contains(&token.as_str()) {
+            iter.next();
+            continue;
+        }
+        if token.starts_with('-') {
+            continue;
+        }
+        return Some(token.clone());
+    }
+    None
 }
 
 /// フラグ名だけを安全側に倒して収集する。
@@ -101,7 +151,8 @@ fn collect_flags(tokens: &[String]) -> Vec<String> {
 
 fn flag_name(token: &str) -> Option<String> {
     if let Some(body) = token.strip_prefix("--") {
-        if body.is_empty() {
+        // `---` のような英数字で始まらないトークンはフラグではなくオペランド
+        if !body.starts_with(|c: char| c.is_ascii_alphanumeric()) {
             return None;
         }
         let name = body.split('=').next().expect("split yields at least one");
@@ -158,6 +209,12 @@ mod tests {
             flags("git commit --amend -m 'x' -m 'y'"),
             vec!["--amend", "-m"]
         );
+    }
+
+    #[test]
+    fn dash_only_tokens_are_not_flags() {
+        assert_eq!(flags("echo --- output"), Vec::<String>::new());
+        assert_eq!(flags("echo ----"), Vec::<String>::new());
     }
 
     #[test]
@@ -225,6 +282,37 @@ mod tests {
                 normalized: "cargo test".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn subcommand_is_found_after_value_taking_global_flag() {
+        assert_eq!(
+            normalize("git -C /path/to/repo commit -m secret"),
+            vec![NormalizedCommand {
+                base_command: "git".to_string(),
+                sub_command: "commit".to_string(),
+                flags: vec!["-C".to_string(), "-m".to_string()],
+                normalized: "git commit".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn subcommand_is_found_after_boolean_global_flag() {
+        assert_eq!(
+            normalize("git --no-pager log --oneline")[0].normalized,
+            "git log"
+        );
+        assert_eq!(
+            normalize("kubectl -n prod get pods")[0].normalized,
+            "kubectl get"
+        );
+    }
+
+    #[test]
+    fn global_flag_value_is_not_mistaken_for_subcommand() {
+        // -C の値 /path はサブコマンドではない
+        assert_eq!(normalize("git -C /path/to/repo")[0].normalized, "git");
     }
 
     #[test]
