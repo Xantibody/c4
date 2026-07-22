@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::process::{Command, Stdio};
 
 use c4::record::{NormalizedLog, build_records};
@@ -12,15 +12,57 @@ use time::OffsetDateTime;
 ///
 /// hookの失敗でClaude Code本体の作業を止めないため、エラーは
 /// stderrに出して終了コード0で終える。
+const USAGE: &str = "\
+c4 — Claude Code Command Collector
+
+Invoked by Claude Code's PostToolUse / PostToolUseFailure hooks.
+Reads the hook JSON from stdin, then normalizes and persists the Bash
+command. Not meant to be run interactively.
+
+USAGE:
+    echo '<hook JSON>' | c4        process a hook event and persist it
+    c4 --persist                   (internal) read record JSON from stdin and store it
+    c4 --help                      show this help
+
+ENV:
+    STORAGE_TYPE   r2 / csv / mock (default: csv)
+    CSV_PATH       CSV output path (default: c4.csv)
+    C4_DUMP        raw payload dump path (schema debugging; contains secrets verbatim)
+    R2_BUCKET / R2_ENDPOINT / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+";
+
 fn main() {
-    if std::env::args().nth(1).as_deref() == Some("--persist") {
-        if let Err(e) = persist_from_stdin() {
-            eprintln!("c4: persist failed: {e:#}");
+    match std::env::args().nth(1).as_deref() {
+        Some("--help" | "-h") => {
+            print!("{USAGE}");
+            return;
         }
-        return;
+        Some("--persist") => {
+            reject_terminal_stdin();
+            if let Err(e) = persist_from_stdin() {
+                eprintln!("c4: persist failed: {e:#}");
+            }
+            return;
+        }
+        Some(other) => {
+            eprintln!("c4: unknown argument: {other}\n");
+            eprint!("{USAGE}");
+            std::process::exit(2);
+        }
+        None => {}
     }
+    reject_terminal_stdin();
     if let Err(e) = collect_and_spawn() {
         eprintln!("c4: {e:#}");
+    }
+}
+
+/// 端末から直接叩かれた場合、stdinを待ってフリーズする代わりに
+/// 使い方を出して終了する。hook経由（パイプ）では発動しない。
+fn reject_terminal_stdin() {
+    if std::io::stdin().is_terminal() {
+        eprint!("{USAGE}");
+        std::process::exit(2);
     }
 }
 

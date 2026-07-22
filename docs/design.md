@@ -194,7 +194,7 @@ DuckDB からは `read_json_auto('s3://bucket/logs/dt=*/*.jsonl')` のように
         "hooks": [
           {
             "type": "command",
-            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv $HOME/.local/bin/c4"
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv c4"
           }
         ]
       }
@@ -205,7 +205,7 @@ DuckDB からは `read_json_auto('s3://bucket/logs/dt=*/*.jsonl')` のように
         "hooks": [
           {
             "type": "command",
-            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv $HOME/.local/bin/c4"
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv c4"
           }
         ]
       }
