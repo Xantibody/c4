@@ -8,7 +8,17 @@ pub struct NormalizedCommand {
 
 /// コマンド文字列を正規化する。空・パース不能な入力は空のVecを返す。
 pub fn normalize(command: &str) -> Vec<NormalizedCommand> {
-    vec![]
+    let Ok(tokens) = shell_words::split(command) else {
+        return vec![];
+    };
+    let Some(base) = tokens.first() else {
+        return vec![];
+    };
+    vec![NormalizedCommand {
+        base_command: base.clone(),
+        sub_command: String::new(),
+        normalized: base.clone(),
+    }]
 }
 
 #[cfg(test)]
@@ -18,5 +28,17 @@ mod tests {
     #[test]
     fn empty_command_yields_no_records() {
         assert_eq!(normalize(""), vec![]);
+    }
+
+    #[test]
+    fn single_command_without_subcommand() {
+        assert_eq!(
+            normalize("ls -la /path/to/dir"),
+            vec![NormalizedCommand {
+                base_command: "ls".to_string(),
+                sub_command: "".to_string(),
+                normalized: "ls".to_string(),
+            }]
+        );
     }
 }
