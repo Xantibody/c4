@@ -55,6 +55,17 @@ hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を
           }
         ]
       }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv $HOME/.local/bin/c4"
+          }
+        ]
+      }
     ]
   }
 }
@@ -73,7 +84,10 @@ c4
 ## 収集されるレコード
 
 ```csv
-timestamp,session_id,base_command,sub_command,normalized_command
-2026-07-22T03:04:36Z,sess-local,git,commit,git commit
-2026-07-22T03:04:36Z,sess-local,grep,,grep
+timestamp,session_id,project,base_command,sub_command,flags,normalized_command,duration_ms,status
+2026-07-22T03:04:36Z,sess-local,c4,git,commit,-m,git commit,49,success
+2026-07-22T03:04:36Z,sess-local,c4,grep,,,grep,49,success
 ```
+
+失敗したコマンドは `PostToolUseFailure` イベント経由で `status=failure` として
+記録される（両イベントに同じhookを登録する）。
