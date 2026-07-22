@@ -1,5 +1,5 @@
 [package]
-name = "claude-logger"
+name = "c4"
 version = "0.1.0"
 edition = "2021"
 description = "Collects and normalizes Bash commands executed via Claude Code hooks"

@@ -18,7 +18,7 @@ impl CsvStorage {
     }
 
     pub fn from_env() -> Self {
-        let path = std::env::var("CSV_PATH").unwrap_or_else(|_| "claude-logger.csv".to_string());
+        let path = std::env::var("CSV_PATH").unwrap_or_else(|_| "c4.csv".to_string());
         Self::new(path)
     }
 }

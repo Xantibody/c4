@@ -1,8 +1,8 @@
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-use claude_logger::record::{NormalizedLog, build_records};
-use claude_logger::{hook, storage};
+use c4::record::{NormalizedLog, build_records};
+use c4::{hook, storage};
 use time::OffsetDateTime;
 
 /// hookとして呼ばれる親モード:
@@ -15,12 +15,12 @@ use time::OffsetDateTime;
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--persist") {
         if let Err(e) = persist_from_stdin() {
-            eprintln!("claude-logger: persist failed: {e:#}");
+            eprintln!("c4: persist failed: {e:#}");
         }
         return;
     }
     if let Err(e) = collect_and_spawn() {
-        eprintln!("claude-logger: {e:#}");
+        eprintln!("c4: {e:#}");
     }
 }
 
@@ -48,11 +48,11 @@ fn collect_and_spawn() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// スキーマ調査用: CLAUDE_LOGGER_DUMP にパスが設定されていれば、
+/// スキーマ調査用: C4_DUMP にパスが設定されていれば、
 /// パース前の生ペイロードをJSONLで追記する。生コマンド（機密含む）が
 /// そのまま残るデバッグ専用機能。失敗しても収集は続行する。
 fn dump_raw_payload(input: &str) {
-    let Ok(path) = std::env::var("CLAUDE_LOGGER_DUMP") else {
+    let Ok(path) = std::env::var("C4_DUMP") else {
         return;
     };
     let result = std::fs::OpenOptions::new()
@@ -61,7 +61,7 @@ fn dump_raw_payload(input: &str) {
         .open(&path)
         .and_then(|mut f| writeln!(f, "{}", input.replace('\n', " ")));
     if let Err(e) = result {
-        eprintln!("claude-logger: dump failed: {e}");
+        eprintln!("c4: dump failed: {e}");
     }
 }
 

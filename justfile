@@ -21,4 +21,4 @@ check: lint format-check test
 smoke:
     echo '{"hook_event_name":"PostToolUse","tool_name":"Bash","session_id":"sess-local","tool_input":{"command":"git commit -m secret && cat foo | grep bar"}}' | STORAGE_TYPE=csv cargo run --quiet
     sleep 0.5
-    cat claude-logger.csv
+    cat c4.csv

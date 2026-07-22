@@ -1,4 +1,4 @@
-# claude-logger
+# c4 — Claude Code Command Collector
 
 Claude Code の PostToolUse hook から Bash コマンドを収集・正規化して
 Cloudflare R2 / ローカルCSV に永続化する CLI ツール。
@@ -26,7 +26,7 @@ nix build
 
 ```sh
 nix build
-install -m755 result/bin/claude-logger ~/.local/bin/claude-logger
+install -m755 result/bin/c4 ~/.local/bin/c4
 ```
 
 インストールせずに `nix run` で直接呼ぶこともできる（初回はビルドが走る。
@@ -51,7 +51,7 @@ hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を
         "hooks": [
           {
             "type": "command",
-            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/claude-logger.csv $HOME/.local/bin/claude-logger"
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv $HOME/.local/bin/c4"
           }
         ]
       }
@@ -67,7 +67,7 @@ STORAGE_TYPE=r2 \
 R2_BUCKET=my-bucket \
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com \
 AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
-claude-logger
+c4
 ```
 
 ## 収集されるレコード
