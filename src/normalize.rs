@@ -12,13 +12,22 @@ const SUBCOMMAND_CLIS: &[&str] = &[
     "git", "npm", "pnpm", "yarn", "docker", "cargo", "aws", "kubectl", "gh", "go", "nix", "just",
 ];
 
+/// パイプ・論理演算子・逐次実行の区切り。クォート内の同文字列は
+/// shell_wordsが1トークンに畳むため誤って区切られない。
+const SEPARATORS: &[&str] = &["|", "&&", "||", ";"];
+
 pub fn normalize(command: &str) -> Vec<NormalizedCommand> {
     let Ok(tokens) = shell_words::split(command) else {
         return vec![];
     };
-    let Some(base) = tokens.first() else {
-        return vec![];
-    };
+    tokens
+        .split(|t| SEPARATORS.contains(&t.as_str()))
+        .filter_map(normalize_segment)
+        .collect()
+}
+
+fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
+    let base = tokens.first()?;
     let sub = if SUBCOMMAND_CLIS.contains(&base.as_str()) {
         tokens.get(1).filter(|t| !t.starts_with('-')).cloned()
     } else {
@@ -28,11 +37,11 @@ pub fn normalize(command: &str) -> Vec<NormalizedCommand> {
         Some(sub) => format!("{base} {sub}"),
         None => base.clone(),
     };
-    vec![NormalizedCommand {
+    Some(NormalizedCommand {
         base_command: base.clone(),
         sub_command: sub.unwrap_or_default(),
         normalized,
-    }]
+    })
 }
 
 #[cfg(test)]
@@ -54,6 +63,13 @@ mod tests {
                 normalized: "git commit".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn compound_command_yields_one_record_per_segment() {
+        let records = normalize("cat foo.txt | grep bar && git status");
+        let normalized: Vec<&str> = records.iter().map(|r| r.normalized.as_str()).collect();
+        assert_eq!(normalized, vec!["cat", "grep", "git status"]);
     }
 
     #[test]
