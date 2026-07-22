@@ -24,14 +24,22 @@ nix build
 
 ## インストールと Claude Code 連携
 
+flake input として取り込む（home-manager等）か、profileにインストールする:
+
 ```sh
-nix build
-install -m755 result/bin/c4 ~/.local/bin/c4
+# nix profile
+nix profile install github:Xantibody/c4
+
+# home-manager: flake inputに追加してoverlay経由でhome.packagesへ
+#   inputs.c4.url = "github:Xantibody/c4";
+#   (final: _: { c4 = inputs.c4.packages.${final.system}.default; })
 ```
+
+PATHに入っていれば hook からは素の `c4` で呼べる。
 
 インストールせずに `nix run` で直接呼ぶこともできる（初回はビルドが走る。
 hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を払うため、
-気になる場合は上記のバイナリ配置を推奨）:
+気になる場合は上記のインストールを推奨）:
 
 ```json
 {
@@ -51,7 +59,7 @@ hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を
         "hooks": [
           {
             "type": "command",
-            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv $HOME/.local/bin/c4"
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv c4"
           }
         ]
       }
@@ -62,7 +70,7 @@ hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を
         "hooks": [
           {
             "type": "command",
-            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv $HOME/.local/bin/c4"
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv c4"
           }
         ]
       }

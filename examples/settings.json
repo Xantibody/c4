@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv $HOME/.local/bin/c4"
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv c4"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv $HOME/.local/bin/c4"
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/c4.csv c4"
           }
         ]
       }
