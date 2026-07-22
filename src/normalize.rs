@@ -96,6 +96,40 @@ mod tests {
     }
 
     #[test]
+    fn flag_as_second_token_is_not_a_subcommand() {
+        assert_eq!(
+            normalize("git --version"),
+            vec![NormalizedCommand {
+                base_command: "git".to_string(),
+                sub_command: "".to_string(),
+                normalized: "git".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn npm_run_drops_script_options() {
+        assert_eq!(normalize("npm run dev --port 3000")[0].normalized, "npm run");
+    }
+
+    #[test]
+    fn quoted_separator_is_not_split() {
+        let records = normalize("grep 'a|b' file.txt");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].normalized, "grep");
+    }
+
+    #[test]
+    fn unparseable_quote_yields_no_records() {
+        assert_eq!(normalize("echo 'unclosed"), vec![]);
+    }
+
+    #[test]
+    fn separator_only_input_yields_no_records() {
+        assert_eq!(normalize("&&"), vec![]);
+    }
+
+    #[test]
     fn single_command_without_subcommand() {
         assert_eq!(
             normalize("ls -la /path/to/dir"),
