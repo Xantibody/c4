@@ -27,6 +27,7 @@ fn main() {
 fn collect_and_spawn() -> anyhow::Result<()> {
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input)?;
+    dump_raw_payload(&input);
     let event = hook::parse(&input)?;
     let records = build_records(&event, OffsetDateTime::now_utc());
     if records.is_empty() {
@@ -45,6 +46,23 @@ fn collect_and_spawn() -> anyhow::Result<()> {
         .write_all(serde_json::to_vec(&records)?.as_slice())?;
     // waitしない: 子は孤児としてバックグラウンドで書き込みを続ける
     Ok(())
+}
+
+/// スキーマ調査用: CLAUDE_LOGGER_DUMP にパスが設定されていれば、
+/// パース前の生ペイロードをJSONLで追記する。生コマンド（機密含む）が
+/// そのまま残るデバッグ専用機能。失敗しても収集は続行する。
+fn dump_raw_payload(input: &str) {
+    let Ok(path) = std::env::var("CLAUDE_LOGGER_DUMP") else {
+        return;
+    };
+    let result = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| writeln!(f, "{}", input.replace('\n', " ")));
+    if let Err(e) = result {
+        eprintln!("claude-logger: dump failed: {e}");
+    }
 }
 
 /// 子モード: stdinからレコード配列を受け取りストレージへ保存する
