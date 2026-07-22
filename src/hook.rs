@@ -1,8 +1,10 @@
 use serde::Deserialize;
 
-/// Claude Code の PostToolUse hook が stdin に渡すJSON。
+/// Claude Code の PostToolUse / PostToolUseFailure hook が stdin に渡すJSON。
 /// 実際のClaude Codeは `hook_event_name`/`tool_name`/`tool_input` を使うが、
 /// 簡略形式 `hook`/`tool`/`input` もaliasで受ける。
+/// cwd / duration_ms は実ペイロードで確認済み（公式ドキュメントには
+/// duration_msの明記がないため、欠けていても動くようOptionで受ける）。
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct HookEvent {
     #[serde(alias = "hook")]
@@ -11,6 +13,10 @@ pub struct HookEvent {
     pub tool_name: String,
     #[serde(default)]
     pub session_id: String,
+    #[serde(default)]
+    pub cwd: String,
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
     #[serde(alias = "input")]
     pub tool_input: ToolInput,
 }
@@ -24,6 +30,16 @@ impl HookEvent {
     /// Bashツールのコマンドのみ収集対象とする
     pub fn bash_command(&self) -> Option<&str> {
         (self.tool_name == "Bash").then_some(self.tool_input.command.as_str())
+    }
+
+    /// 発火イベント名から成否を導く。成功時はPostToolUse、
+    /// 失敗時はPostToolUseFailureに同じhookを登録する前提。
+    pub fn status(&self) -> &'static str {
+        if self.hook_event_name == "PostToolUseFailure" {
+            "failure"
+        } else {
+            "success"
+        }
     }
 }
 
@@ -47,6 +63,40 @@ mod tests {
         )
         .unwrap();
         assert_eq!(event.bash_command(), Some("ls -la"));
+        assert_eq!(event.cwd, "");
+        assert_eq!(event.duration_ms, None);
+    }
+
+    #[test]
+    fn parses_cwd_and_duration() {
+        let event = parse(
+            r#"{
+                "hook_event_name": "PostToolUse",
+                "tool_name": "Bash",
+                "session_id": "sess-xxxx",
+                "cwd": "/Users/me/Repository/c4",
+                "duration_ms": 49,
+                "tool_input": {"command": "ls"}
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(event.cwd, "/Users/me/Repository/c4");
+        assert_eq!(event.duration_ms, Some(49));
+        assert_eq!(event.status(), "success");
+    }
+
+    #[test]
+    fn failure_event_reports_failure_status() {
+        let event = parse(
+            r#"{
+                "hook_event_name": "PostToolUseFailure",
+                "tool_name": "Bash",
+                "tool_input": {"command": "cargo test"}
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(event.status(), "failure");
+        assert_eq!(event.bash_command(), Some("cargo test"));
     }
 
     #[test]

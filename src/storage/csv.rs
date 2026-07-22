@@ -50,10 +50,13 @@ mod tests {
         NormalizedLog {
             timestamp: "2026-07-22T03:00:00Z".to_string(),
             session_id: session.to_string(),
+            project: "c4".to_string(),
             base_command: normalized.split(' ').next().unwrap().to_string(),
             sub_command: normalized.split(' ').nth(1).unwrap_or("").to_string(),
             flags: "".to_string(),
             normalized_command: normalized.to_string(),
+            duration_ms: Some(49),
+            status: "success".to_string(),
         }
     }
 
@@ -71,9 +74,9 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                "timestamp,session_id,base_command,sub_command,flags,normalized_command",
-                "2026-07-22T03:00:00Z,s1,git,commit,,git commit",
-                "2026-07-22T03:00:00Z,s2,ls,,,ls",
+                "timestamp,session_id,project,base_command,sub_command,flags,normalized_command,duration_ms,status",
+                "2026-07-22T03:00:00Z,s1,c4,git,commit,,git commit,49,success",
+                "2026-07-22T03:00:00Z,s2,c4,ls,,,ls,49,success",
             ]
         );
     }
