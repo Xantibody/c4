@@ -8,7 +8,8 @@ pub struct NormalizedCommand {
     pub normalized: String,
 }
 
-/// サブコマンドを持つ主要CLI。第2トークンをsub_commandとして扱う。
+/// サブコマンドを持つ主要CLI。グローバルオプションを読み飛ばした
+/// 最初の非フラグトークンをsub_commandとして扱う。
 const SUBCOMMAND_CLIS: &[&str] = &[
     "git", "npm", "pnpm", "yarn", "docker", "cargo", "aws", "kubectl", "gh", "go", "nix", "just",
 ];
