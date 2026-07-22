@@ -14,6 +14,8 @@ pub struct NormalizedLog {
     pub session_id: String,
     pub base_command: String,
     pub sub_command: String,
+    /// スペース区切りのフラグ名 (例: "--amend -m")。値は含まない
+    pub flags: String,
     pub normalized_command: String,
 }
 
@@ -33,6 +35,7 @@ pub fn build_records(event: &HookEvent, timestamp: OffsetDateTime) -> Vec<Normal
             session_id: event.session_id.clone(),
             base_command: c.base_command,
             sub_command: c.sub_command,
+            flags: c.flags.join(" "),
             normalized_command: c.normalized,
         })
         .collect()
@@ -70,6 +73,7 @@ mod tests {
                     session_id: "sess-test".to_string(),
                     base_command: "git".to_string(),
                     sub_command: "commit".to_string(),
+                    flags: "-m".to_string(),
                     normalized_command: "git commit".to_string(),
                 },
                 NormalizedLog {
@@ -77,6 +81,7 @@ mod tests {
                     session_id: "sess-test".to_string(),
                     base_command: "ls".to_string(),
                     sub_command: "".to_string(),
+                    flags: "".to_string(),
                     normalized_command: "ls".to_string(),
                 },
             ]

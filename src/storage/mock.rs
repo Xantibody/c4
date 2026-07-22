@@ -39,6 +39,7 @@ mod tests {
             session_id: "sess-test".to_string(),
             base_command: normalized.split(' ').next().unwrap().to_string(),
             sub_command: "".to_string(),
+            flags: "".to_string(),
             normalized_command: normalized.to_string(),
         }
     }

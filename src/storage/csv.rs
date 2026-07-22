@@ -52,6 +52,7 @@ mod tests {
             session_id: session.to_string(),
             base_command: normalized.split(' ').next().unwrap().to_string(),
             sub_command: normalized.split(' ').nth(1).unwrap_or("").to_string(),
+            flags: "".to_string(),
             normalized_command: normalized.to_string(),
         }
     }
@@ -70,9 +71,9 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                "timestamp,session_id,base_command,sub_command,normalized_command",
-                "2026-07-22T03:00:00Z,s1,git,commit,git commit",
-                "2026-07-22T03:00:00Z,s2,ls,,ls",
+                "timestamp,session_id,base_command,sub_command,flags,normalized_command",
+                "2026-07-22T03:00:00Z,s1,git,commit,,git commit",
+                "2026-07-22T03:00:00Z,s2,ls,,,ls",
             ]
         );
     }

@@ -3,6 +3,8 @@
 pub struct NormalizedCommand {
     pub base_command: String,
     pub sub_command: String,
+    /// ソート・重複排除済みのフラグ名。値は含まない (例: ["--amend", "-m"])
+    pub flags: Vec<String>,
     pub normalized: String,
 }
 
@@ -45,8 +47,47 @@ fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
     Some(NormalizedCommand {
         base_command: base.clone(),
         sub_command: sub.unwrap_or_default(),
+        flags: collect_flags(&tokens[1..]),
         normalized,
     })
+}
+
+/// フラグ名だけを安全側に倒して収集する。
+/// - `--name=value` は `=` の手前まで（名前だけ）
+/// - 短フラグは英字のみ3文字以内 (`-m` `-la` `-rf`) ならそのまま、
+///   くっつき値の可能性がある長いもの (`-psecret`) は先頭1文字に切り詰め、
+///   英字で始まらないもの (`-5`) は値とみなして捨てる
+/// - 裸の `--` 以降はオペランドなので収集しない
+fn collect_flags(tokens: &[String]) -> Vec<String> {
+    let mut flags: Vec<String> = tokens
+        .iter()
+        .take_while(|t| t.as_str() != "--")
+        .filter_map(|t| flag_name(t))
+        .collect();
+    flags.sort();
+    flags.dedup();
+    flags
+}
+
+fn flag_name(token: &str) -> Option<String> {
+    if let Some(body) = token.strip_prefix("--") {
+        if body.is_empty() {
+            return None;
+        }
+        let name = body.split('=').next().expect("split yields at least one");
+        return Some(format!("--{name}"));
+    }
+    let body = token.strip_prefix('-')?;
+    let mut chars = body.chars();
+    let first = chars.next()?;
+    if !first.is_ascii_alphabetic() {
+        return None;
+    }
+    if body.len() <= 2 && body.chars().all(|c| c.is_ascii_alphabetic()) {
+        Some(token.to_string())
+    } else {
+        Some(format!("-{first}"))
+    }
 }
 
 fn is_env_assignment(token: &str) -> bool {
@@ -58,6 +99,10 @@ fn is_env_assignment(token: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn flags(command: &str) -> Vec<String> {
+        normalize(command).remove(0).flags
+    }
 
     #[test]
     fn empty_command_yields_no_records() {
@@ -71,9 +116,44 @@ mod tests {
             vec![NormalizedCommand {
                 base_command: "git".to_string(),
                 sub_command: "commit".to_string(),
+                flags: vec!["-m".to_string()],
                 normalized: "git commit".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn flags_are_sorted_and_deduped_without_values() {
+        assert_eq!(
+            flags("git commit --amend -m 'x' -m 'y'"),
+            vec!["--amend", "-m"]
+        );
+    }
+
+    #[test]
+    fn long_flag_value_after_equals_is_dropped() {
+        assert_eq!(flags("mysql --password=secret123"), vec!["--password"]);
+    }
+
+    #[test]
+    fn short_flag_bundle_is_kept() {
+        assert_eq!(flags("ls -la"), vec!["-la"]);
+        assert_eq!(flags("rm -rf dir"), vec!["-rf"]);
+    }
+
+    #[test]
+    fn attached_short_flag_value_is_truncated_to_first_letter() {
+        assert_eq!(flags("mysql -psecret123"), vec!["-p"]);
+    }
+
+    #[test]
+    fn numeric_short_token_is_treated_as_value() {
+        assert_eq!(flags("head -5 file.txt"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn tokens_after_bare_double_dash_are_operands() {
+        assert_eq!(flags("git checkout -b topic -- -weird-file"), vec!["-b"]);
     }
 
     #[test]
@@ -90,6 +170,7 @@ mod tests {
             vec![NormalizedCommand {
                 base_command: "cargo".to_string(),
                 sub_command: "test".to_string(),
+                flags: vec!["--lib".to_string()],
                 normalized: "cargo test".to_string(),
             }]
         );
@@ -102,6 +183,7 @@ mod tests {
             vec![NormalizedCommand {
                 base_command: "git".to_string(),
                 sub_command: "".to_string(),
+                flags: vec!["--version".to_string()],
                 normalized: "git".to_string(),
             }]
         );
@@ -139,6 +221,7 @@ mod tests {
             vec![NormalizedCommand {
                 base_command: "ls".to_string(),
                 sub_command: "".to_string(),
+                flags: vec!["-la".to_string()],
                 normalized: "ls".to_string(),
             }]
         );

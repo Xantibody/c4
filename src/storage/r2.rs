@@ -77,6 +77,7 @@ mod tests {
             session_id: "sess-xxxx".to_string(),
             base_command: "git".to_string(),
             sub_command: "commit".to_string(),
+            flags: "-m".to_string(),
             normalized_command: "git commit".to_string(),
         };
         let key = R2Storage::object_key(&log);
