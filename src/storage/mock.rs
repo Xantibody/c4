@@ -39,6 +39,7 @@ mod tests {
             session_id: "sess-test".to_string(),
             tool_use_id: "toolu_abc".to_string(),
             project: "c4".to_string(),
+            hostname: "mac-studio".to_string(),
             segment_index: 0,
             connector: "".to_string(),
             base_command: normalized.split(' ').next().unwrap().to_string(),
@@ -47,6 +48,7 @@ mod tests {
             normalized_command: normalized.to_string(),
             duration_ms: None,
             status: "success".to_string(),
+            effort: "high".to_string(),
         }
     }
 

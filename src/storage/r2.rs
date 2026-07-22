@@ -77,6 +77,7 @@ mod tests {
             session_id: "sess-xxxx".to_string(),
             tool_use_id: "toolu_abc".to_string(),
             project: "c4".to_string(),
+            hostname: "mac-studio".to_string(),
             segment_index: 0,
             connector: "".to_string(),
             base_command: "git".to_string(),
@@ -85,6 +86,7 @@ mod tests {
             normalized_command: "git commit".to_string(),
             duration_ms: Some(49),
             status: "success".to_string(),
+            effort: "high".to_string(),
         };
         let key = R2Storage::object_key(&log);
         assert!(key.starts_with("logs/dt=2026-07-22/"));

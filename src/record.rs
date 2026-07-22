@@ -19,6 +19,8 @@ pub struct NormalizedLog {
     pub tool_use_id: String,
     /// cwdのbasename。フルパスは個人情報を含みうるため残さない
     pub project: String,
+    /// 実行マシン名。スペック・回線差は対応表で引く前提の代理キー
+    pub hostname: String,
     /// 複合コマンド内の位置（0始まり）
     pub segment_index: u32,
     /// このセグメントの直前の演算子 ("" / "|" / "&&" / "||" / ";")
@@ -32,11 +34,18 @@ pub struct NormalizedLog {
     pub duration_ms: Option<u64>,
     /// success / failure (PostToolUseFailure発火時)
     pub status: String,
+    /// reasoning effortレベル（modelの代理変数。無ければ空文字）
+    pub effort: String,
 }
 
 /// HookEventから保存対象レコードを組み立てる純粋関数。
+/// hostnameは呼び出し側でOSから取得して渡す（純粋性の維持）。
 /// Bash以外のツールやコマンドが正規化不能な場合は空を返す。
-pub fn build_records(event: &HookEvent, timestamp: OffsetDateTime) -> Vec<NormalizedLog> {
+pub fn build_records(
+    event: &HookEvent,
+    timestamp: OffsetDateTime,
+    hostname: &str,
+) -> Vec<NormalizedLog> {
     let Some(command) = event.bash_command() else {
         return vec![];
     };
@@ -54,6 +63,7 @@ pub fn build_records(event: &HookEvent, timestamp: OffsetDateTime) -> Vec<Normal
             session_id: event.session_id.clone(),
             tool_use_id: event.tool_use_id.clone(),
             project: project.clone(),
+            hostname: hostname.to_string(),
             segment_index: c.segment_index,
             connector: c.connector,
             base_command: c.base_command,
@@ -62,6 +72,7 @@ pub fn build_records(event: &HookEvent, timestamp: OffsetDateTime) -> Vec<Normal
             normalized_command: c.normalized,
             duration_ms: event.duration_ms,
             status: event.status().to_string(),
+            effort: event.effort_level().to_string(),
         })
         .collect()
 }
@@ -80,6 +91,7 @@ mod tests {
                 "tool_use_id": "toolu_abc",
                 "cwd": "/Users/me/Repository/c4",
                 "duration_ms": 49,
+                "effort": {{"level": "high"}},
                 "tool_input": {{"command": {}}}
             }}"#,
             serde_json::to_string(command).unwrap()
@@ -92,6 +104,7 @@ mod tests {
         let records = build_records(
             &bash_event("git commit -m secret && ls"),
             datetime!(2026-07-22 03:00:00 UTC),
+            "mac-studio",
         );
         assert_eq!(
             records,
@@ -101,6 +114,7 @@ mod tests {
                     session_id: "sess-test".to_string(),
                     tool_use_id: "toolu_abc".to_string(),
                     project: "c4".to_string(),
+                    hostname: "mac-studio".to_string(),
                     segment_index: 0,
                     connector: "".to_string(),
                     base_command: "git".to_string(),
@@ -109,12 +123,14 @@ mod tests {
                     normalized_command: "git commit".to_string(),
                     duration_ms: Some(49),
                     status: "success".to_string(),
+                    effort: "high".to_string(),
                 },
                 NormalizedLog {
                     timestamp: "2026-07-22T03:00:00Z".to_string(),
                     session_id: "sess-test".to_string(),
                     tool_use_id: "toolu_abc".to_string(),
                     project: "c4".to_string(),
+                    hostname: "mac-studio".to_string(),
                     segment_index: 1,
                     connector: "&&".to_string(),
                     base_command: "ls".to_string(),
@@ -123,6 +139,7 @@ mod tests {
                     normalized_command: "ls".to_string(),
                     duration_ms: Some(49),
                     status: "success".to_string(),
+                    effort: "high".to_string(),
                 },
             ]
         );
@@ -134,11 +151,13 @@ mod tests {
             r#"{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"cargo test"}}"#,
         )
         .unwrap();
-        let records = build_records(&event, datetime!(2026-07-22 03:00:00 UTC));
+        let records = build_records(&event, datetime!(2026-07-22 03:00:00 UTC), "mac-studio");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].status, "failure");
         assert_eq!(records[0].project, "");
         assert_eq!(records[0].duration_ms, None);
+        assert_eq!(records[0].effort, "");
+        assert_eq!(records[0].hostname, "mac-studio");
     }
 
     #[test]
@@ -148,7 +167,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            build_records(&event, datetime!(2026-07-22 03:00:00 UTC)),
+            build_records(&event, datetime!(2026-07-22 03:00:00 UTC), "mac-studio"),
             vec![]
         );
     }

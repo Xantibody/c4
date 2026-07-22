@@ -19,7 +19,7 @@ check: lint format-check test
 
 # hookに渡されるJSONを模したローカル動作確認
 smoke:
-    echo '{"hook_event_name":"PostToolUse","tool_name":"Bash","session_id":"sess-local","tool_use_id":"toolu_ok","cwd":"/Users/me/Repository/c4","duration_ms":49,"tool_input":{"command":"git commit -m secret && cat foo | grep bar"}}' | STORAGE_TYPE=csv cargo run --quiet
+    echo '{"hook_event_name":"PostToolUse","tool_name":"Bash","session_id":"sess-local","tool_use_id":"toolu_ok","cwd":"/Users/me/Repository/c4","duration_ms":49,"effort":{"level":"high"},"tool_input":{"command":"git commit -m secret && cat foo | grep bar"}}' | STORAGE_TYPE=csv cargo run --quiet
     echo '{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","session_id":"sess-local","tool_use_id":"toolu_ng","cwd":"/Users/me/Repository/c4","duration_ms":1200,"tool_input":{"command":"cargo test --lib"}}' | STORAGE_TYPE=csv cargo run --quiet
     sleep 0.5
     cat c4.csv
