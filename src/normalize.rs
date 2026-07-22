@@ -6,7 +6,6 @@ pub struct NormalizedCommand {
     pub normalized: String,
 }
 
-/// コマンド文字列を正規化する。空・パース不能な入力は空のVecを返す。
 /// サブコマンドを持つ主要CLI。第2トークンをsub_commandとして扱う。
 const SUBCOMMAND_CLIS: &[&str] = &[
     "git", "npm", "pnpm", "yarn", "docker", "cargo", "aws", "kubectl", "gh", "go", "nix", "just",
@@ -16,6 +15,7 @@ const SUBCOMMAND_CLIS: &[&str] = &[
 /// shell_wordsが1トークンに畳むため誤って区切られない。
 const SEPARATORS: &[&str] = &["|", "&&", "||", ";"];
 
+/// コマンド文字列を正規化する。空・パース不能な入力は空のVecを返す。
 pub fn normalize(command: &str) -> Vec<NormalizedCommand> {
     let Ok(tokens) = shell_words::split(command) else {
         return vec![];
