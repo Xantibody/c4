@@ -1,5 +1,5 @@
 {
-  description = "claude-logger: Claude Code Bash command log collector";
+  description = "c4: Claude Code Command Collector";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -53,11 +53,11 @@
       {
         # hookとして常駐させるバイナリを `nix profile install .` で入れられるようにする
         packages.default = rustPlatform.buildRustPackage {
-          pname = "claude-logger";
+          pname = "c4";
           version = "0.1.0";
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
-          meta.mainProgram = "claude-logger";
+          meta.mainProgram = "c4";
         };
 
         formatter = treefmtEval.config.build.wrapper;
