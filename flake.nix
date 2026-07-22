@@ -57,6 +57,7 @@
           version = "0.1.0";
           src = pkgs.lib.cleanSource ./.;
           cargoLock.lockFile = ./Cargo.lock;
+          meta.mainProgram = "claude-logger";
         };
 
         formatter = treefmtEval.config.build.wrapper;

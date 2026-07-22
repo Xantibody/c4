@@ -29,6 +29,17 @@ nix build
 install -m755 result/bin/claude-logger ~/.local/bin/claude-logger
 ```
 
+インストールせずに `nix run` で直接呼ぶこともできる（初回はビルドが走る。
+hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を払うため、
+気になる場合は上記のバイナリ配置を推奨）:
+
+```json
+{
+  "type": "command",
+  "command": "STORAGE_TYPE=csv nix run github:Xantibody/c4 --"
+}
+```
+
 `~/.claude/settings.json` に hook を登録する（[examples/settings.json](examples/settings.json)）:
 
 ```json
