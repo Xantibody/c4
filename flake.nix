@@ -44,7 +44,9 @@
         treefmtEval = treefmt-nix.lib.evalModule pkgs {
           projectRootFile = "flake.nix";
           programs.nixfmt.enable = true;
+          # devShell/CIのcargo fmtと流儀を揃えるためtoolchainのrustfmtを使う
           programs.rustfmt.enable = true;
+          programs.rustfmt.package = rustToolchain;
           programs.taplo.enable = true;
         };
       in
