@@ -52,6 +52,7 @@ mod tests {
             session_id: session.to_string(),
             tool_use_id: "toolu_abc".to_string(),
             project: "c4".to_string(),
+            hostname: "mac-studio".to_string(),
             segment_index: 0,
             connector: "".to_string(),
             base_command: normalized.split(' ').next().unwrap().to_string(),
@@ -60,6 +61,7 @@ mod tests {
             normalized_command: normalized.to_string(),
             duration_ms: Some(49),
             status: "success".to_string(),
+            effort: "high".to_string(),
         }
     }
 
@@ -77,9 +79,9 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                "timestamp,session_id,tool_use_id,project,segment_index,connector,base_command,sub_command,flags,normalized_command,duration_ms,status",
-                "2026-07-22T03:00:00Z,s1,toolu_abc,c4,0,,git,commit,,git commit,49,success",
-                "2026-07-22T03:00:00Z,s2,toolu_abc,c4,0,,ls,,,ls,49,success",
+                "timestamp,session_id,tool_use_id,project,hostname,segment_index,connector,base_command,sub_command,flags,normalized_command,duration_ms,status,effort",
+                "2026-07-22T03:00:00Z,s1,toolu_abc,c4,mac-studio,0,,git,commit,,git commit,49,success,high",
+                "2026-07-22T03:00:00Z,s2,toolu_abc,c4,mac-studio,0,,ls,,,ls,49,success,high",
             ]
         );
     }

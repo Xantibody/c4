@@ -29,7 +29,8 @@ fn collect_and_spawn() -> anyhow::Result<()> {
     std::io::stdin().read_to_string(&mut input)?;
     dump_raw_payload(&input);
     let event = hook::parse(&input)?;
-    let records = build_records(&event, OffsetDateTime::now_utc());
+    let hostname = gethostname::gethostname().to_string_lossy().into_owned();
+    let records = build_records(&event, OffsetDateTime::now_utc(), &hostname);
     if records.is_empty() {
         return Ok(());
     }

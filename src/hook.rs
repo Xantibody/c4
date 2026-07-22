@@ -21,8 +21,17 @@ pub struct HookEvent {
     pub cwd: String,
     #[serde(default)]
     pub duration_ms: Option<u64>,
+    /// reasoning effort設定。modelはペイロードに含まれないため、
+    /// 「どの思考設定での実行か」の代理変数として記録する
+    #[serde(default)]
+    pub effort: Option<Effort>,
     #[serde(alias = "input")]
     pub tool_input: ToolInput,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct Effort {
+    pub level: String,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -34,6 +43,11 @@ impl HookEvent {
     /// Bashツールのコマンドのみ収集対象とする
     pub fn bash_command(&self) -> Option<&str> {
         (self.tool_name == "Bash").then_some(self.tool_input.command.as_str())
+    }
+
+    /// effortレベル。ペイロードに無ければ空文字
+    pub fn effort_level(&self) -> &str {
+        self.effort.as_ref().map_or("", |e| e.level.as_str())
     }
 
     /// 発火イベント名から成否を導く。成功時はPostToolUse、
@@ -69,6 +83,7 @@ mod tests {
         assert_eq!(event.bash_command(), Some("ls -la"));
         assert_eq!(event.cwd, "");
         assert_eq!(event.duration_ms, None);
+        assert_eq!(event.effort_level(), "");
     }
 
     #[test]
@@ -81,6 +96,7 @@ mod tests {
                 "cwd": "/Users/me/Repository/c4",
                 "duration_ms": 49,
                 "tool_use_id": "toolu_abc",
+                "effort": {"level": "high"},
                 "tool_input": {"command": "ls"}
             }"#,
         )
@@ -88,6 +104,7 @@ mod tests {
         assert_eq!(event.cwd, "/Users/me/Repository/c4");
         assert_eq!(event.duration_ms, Some(49));
         assert_eq!(event.tool_use_id, "toolu_abc");
+        assert_eq!(event.effort_level(), "high");
         assert_eq!(event.status(), "success");
     }
 
