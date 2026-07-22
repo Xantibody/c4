@@ -13,19 +13,49 @@ const SUBCOMMAND_CLIS: &[&str] = &[
     "git", "npm", "pnpm", "yarn", "docker", "cargo", "aws", "kubectl", "gh", "go", "nix", "just",
 ];
 
-/// パイプ・論理演算子・逐次実行の区切り。クォート内の同文字列は
-/// shell_wordsが1トークンに畳むため誤って区切られない。
-const SEPARATORS: &[&str] = &["|", "&&", "||", ";"];
-
-/// コマンド文字列を正規化する。空・パース不能な入力は空のVecを返す。
+/// コマンド文字列を正規化する。空のセグメントや
+/// パース不能なセグメントはレコードを生成しない。
 pub fn normalize(command: &str) -> Vec<NormalizedCommand> {
-    let Ok(tokens) = shell_words::split(command) else {
-        return vec![];
-    };
-    tokens
-        .split(|t| SEPARATORS.contains(&t.as_str()))
-        .filter_map(normalize_segment)
+    split_segments(command)
+        .into_iter()
+        .filter_map(|seg| shell_words::split(&seg).ok())
+        .filter_map(|tokens| normalize_segment(&tokens))
         .collect()
+}
+
+/// クォート外の `;` `|` `||` `&&` で複合コマンドを分割する。
+/// トークン化前の生文字列を走査するため、`echo hi;ls` のような
+/// 密着した区切りも扱える。`2>&1` の単独 `&` は区切りとしない。
+fn split_segments(command: &str) -> Vec<String> {
+    let mut segments = vec![String::new()];
+    let mut chars = command.chars().peekable();
+    let (mut in_single, mut in_double) = (false, false);
+    while let Some(c) = chars.next() {
+        let quoted = in_single || in_double;
+        match c {
+            '\'' if !in_double => in_single = !in_single,
+            '"' if !in_single => in_double = !in_double,
+            '\\' if !in_single => {
+                segments.last_mut().expect("never empty").push(c);
+                if let Some(next) = chars.next() {
+                    segments.last_mut().expect("never empty").push(next);
+                }
+                continue;
+            }
+            ';' | '|' if !quoted => {
+                segments.push(String::new());
+                continue;
+            }
+            '&' if !quoted && chars.peek() == Some(&'&') => {
+                chars.next();
+                segments.push(String::new());
+                continue;
+            }
+            _ => {}
+        }
+        segments.last_mut().expect("never empty").push(c);
+    }
+    segments
 }
 
 fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
@@ -154,6 +184,27 @@ mod tests {
     #[test]
     fn tokens_after_bare_double_dash_are_operands() {
         assert_eq!(flags("git checkout -b topic -- -weird-file"), vec!["-b"]);
+    }
+
+    #[test]
+    fn attached_separator_splits_segments() {
+        let records = normalize("echo ---; ls -la");
+        let normalized: Vec<&str> = records.iter().map(|r| r.normalized.as_str()).collect();
+        assert_eq!(normalized, vec!["echo", "ls"]);
+    }
+
+    #[test]
+    fn attached_pipe_splits_segments() {
+        let records = normalize("cat foo.txt|grep bar");
+        let normalized: Vec<&str> = records.iter().map(|r| r.normalized.as_str()).collect();
+        assert_eq!(normalized, vec!["cat", "grep"]);
+    }
+
+    #[test]
+    fn stream_redirect_ampersand_is_not_a_separator() {
+        let records = normalize("cargo build 2>&1");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].normalized, "cargo build");
     }
 
     #[test]
