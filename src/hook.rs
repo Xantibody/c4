@@ -13,6 +13,10 @@ pub struct HookEvent {
     pub tool_name: String,
     #[serde(default)]
     pub session_id: String,
+    /// 1回のBashツール呼び出しを識別するID。複合コマンドから生じた
+    /// 複数レコードのグループ化キーになる
+    #[serde(default)]
+    pub tool_use_id: String,
     #[serde(default)]
     pub cwd: String,
     #[serde(default)]
@@ -76,12 +80,14 @@ mod tests {
                 "session_id": "sess-xxxx",
                 "cwd": "/Users/me/Repository/c4",
                 "duration_ms": 49,
+                "tool_use_id": "toolu_abc",
                 "tool_input": {"command": "ls"}
             }"#,
         )
         .unwrap();
         assert_eq!(event.cwd, "/Users/me/Repository/c4");
         assert_eq!(event.duration_ms, Some(49));
+        assert_eq!(event.tool_use_id, "toolu_abc");
         assert_eq!(event.status(), "success");
     }
 
