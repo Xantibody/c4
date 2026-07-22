@@ -84,10 +84,14 @@ c4
 ## 収集されるレコード
 
 ```csv
-timestamp,session_id,project,base_command,sub_command,flags,normalized_command,duration_ms,status
-2026-07-22T03:04:36Z,sess-local,c4,git,commit,-m,git commit,49,success
-2026-07-22T03:04:36Z,sess-local,c4,grep,,,grep,49,success
+timestamp,session_id,tool_use_id,project,segment_index,connector,base_command,sub_command,flags,normalized_command,duration_ms,status
+2026-07-22T03:04:36Z,sess-local,toolu_x,c4,0,,git,commit,-m,git commit,49,success
+2026-07-22T03:04:36Z,sess-local,toolu_x,c4,1,&&,cat,,,cat,49,success
+2026-07-22T03:04:36Z,sess-local,toolu_x,c4,2,|,grep,,,grep,49,success
 ```
+
+`tool_use_id` + `segment_index` + `connector` で複合コマンドのチェーンを
+分析時に復元できる（`cat | grep` → `rg` のような置換候補の検出に使う）。
 
 失敗したコマンドは `PostToolUseFailure` イベント経由で `status=failure` として
 記録される（両イベントに同じhookを登録する）。
