@@ -27,6 +27,11 @@ pub fn normalize(command: &str) -> Vec<NormalizedCommand> {
 }
 
 fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
+    // `FOO=bar cmd` 形式の先行環境変数代入は機密を含みうるため読み飛ばす
+    let tokens = &tokens[tokens
+        .iter()
+        .position(|t| !is_env_assignment(t))
+        .unwrap_or(tokens.len())..];
     let base = tokens.first()?;
     let sub = if SUBCOMMAND_CLIS.contains(&base.as_str()) {
         tokens.get(1).filter(|t| !t.starts_with('-')).cloned()
@@ -42,6 +47,12 @@ fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
         sub_command: sub.unwrap_or_default(),
         normalized,
     })
+}
+
+fn is_env_assignment(token: &str) -> bool {
+    token
+        .split_once('=')
+        .is_some_and(|(name, _)| !name.is_empty() && !name.contains(|c: char| c.is_whitespace()))
 }
 
 #[cfg(test)]
@@ -70,6 +81,18 @@ mod tests {
         let records = normalize("cat foo.txt | grep bar && git status");
         let normalized: Vec<&str> = records.iter().map(|r| r.normalized.as_str()).collect();
         assert_eq!(normalized, vec!["cat", "grep", "git status"]);
+    }
+
+    #[test]
+    fn env_var_prefix_is_skipped_and_dropped() {
+        assert_eq!(
+            normalize("RUST_LOG=debug API_KEY=secret cargo test --lib"),
+            vec![NormalizedCommand {
+                base_command: "cargo".to_string(),
+                sub_command: "test".to_string(),
+                normalized: "cargo test".to_string(),
+            }]
+        );
     }
 
     #[test]
