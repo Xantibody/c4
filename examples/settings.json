@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "STORAGE_TYPE=csv CSV_PATH=$HOME/.claude/claude-logger.csv $HOME/.local/bin/claude-logger"
+          }
+        ]
+      }
+    ]
+  }
+}
