@@ -5,6 +5,11 @@ pub struct NormalizedCommand {
     pub sub_command: String,
     /// ソート・重複排除済みのフラグ名。値は含まない (例: ["--amend", "-m"])
     pub flags: Vec<String>,
+    /// このセグメントの直前の演算子 ("" / "|" / "&&" / "||" / ";")。
+    /// パイプラインのイディオム分析（cat|grep → rg への置換等）に使う
+    pub connector: String,
+    /// 複合コマンド内の位置（0始まり）
+    pub segment_index: u32,
     pub normalized: String,
 }
 
@@ -19,16 +24,27 @@ const SUBCOMMAND_CLIS: &[&str] = &[
 pub fn normalize(command: &str) -> Vec<NormalizedCommand> {
     split_segments(command)
         .into_iter()
-        .filter_map(|seg| shell_words::split(&seg).ok())
-        .filter_map(|tokens| normalize_segment(&tokens))
+        .filter_map(|(connector, seg)| shell_words::split(&seg).ok().map(|t| (connector, t)))
+        .filter_map(|(connector, tokens)| {
+            normalize_segment(&tokens).map(|mut c| {
+                c.connector = connector;
+                c
+            })
+        })
+        .enumerate()
+        .map(|(i, mut c)| {
+            c.segment_index = i as u32;
+            c
+        })
         .collect()
 }
 
-/// クォート外の `;` `|` `||` `&&` で複合コマンドを分割する。
+/// クォート外の `;` `|` `||` `&&` で複合コマンドを分割し、
+/// 各セグメントを（直前の演算子, セグメント文字列）のペアで返す。
 /// トークン化前の生文字列を走査するため、`echo hi;ls` のような
 /// 密着した区切りも扱える。`2>&1` の単独 `&` は区切りとしない。
-fn split_segments(command: &str) -> Vec<String> {
-    let mut segments = vec![String::new()];
+fn split_segments(command: &str) -> Vec<(String, String)> {
+    let mut segments = vec![(String::new(), String::new())];
     let mut chars = command.chars().peekable();
     let (mut in_single, mut in_double) = (false, false);
     while let Some(c) = chars.next() {
@@ -37,24 +53,34 @@ fn split_segments(command: &str) -> Vec<String> {
             '\'' if !in_double => in_single = !in_single,
             '"' if !in_single => in_double = !in_double,
             '\\' if !in_single => {
-                segments.last_mut().expect("never empty").push(c);
+                segments.last_mut().expect("never empty").1.push(c);
                 if let Some(next) = chars.next() {
-                    segments.last_mut().expect("never empty").push(next);
+                    segments.last_mut().expect("never empty").1.push(next);
                 }
                 continue;
             }
-            ';' | '|' if !quoted => {
-                segments.push(String::new());
+            ';' if !quoted => {
+                segments.push((";".to_string(), String::new()));
+                continue;
+            }
+            '|' if !quoted => {
+                let connector = if chars.peek() == Some(&'|') {
+                    chars.next();
+                    "||"
+                } else {
+                    "|"
+                };
+                segments.push((connector.to_string(), String::new()));
                 continue;
             }
             '&' if !quoted && chars.peek() == Some(&'&') => {
                 chars.next();
-                segments.push(String::new());
+                segments.push(("&&".to_string(), String::new()));
                 continue;
             }
             _ => {}
         }
-        segments.last_mut().expect("never empty").push(c);
+        segments.last_mut().expect("never empty").1.push(c);
     }
     segments
 }
@@ -75,6 +101,8 @@ fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
         base_command: base.clone(),
         sub_command: sub.unwrap_or_default(),
         flags: collect_flags(&tokens[1..]),
+        connector: String::new(),
+        segment_index: 0,
         normalized,
     })
 }
@@ -198,6 +226,8 @@ mod tests {
                 base_command: "git".to_string(),
                 sub_command: "commit".to_string(),
                 flags: vec!["-m".to_string()],
+                connector: "".to_string(),
+                segment_index: 0,
                 normalized: "git commit".to_string(),
             }]
         );
@@ -265,6 +295,25 @@ mod tests {
     }
 
     #[test]
+    fn segments_carry_connector_and_index() {
+        let records = normalize("cat foo.txt | grep bar && git status; ls || echo x");
+        let chain: Vec<(&str, u32, &str)> = records
+            .iter()
+            .map(|r| (r.connector.as_str(), r.segment_index, r.normalized.as_str()))
+            .collect();
+        assert_eq!(
+            chain,
+            vec![
+                ("", 0, "cat"),
+                ("|", 1, "grep"),
+                ("&&", 2, "git status"),
+                (";", 3, "ls"),
+                ("||", 4, "echo"),
+            ]
+        );
+    }
+
+    #[test]
     fn compound_command_yields_one_record_per_segment() {
         let records = normalize("cat foo.txt | grep bar && git status");
         let normalized: Vec<&str> = records.iter().map(|r| r.normalized.as_str()).collect();
@@ -279,6 +328,8 @@ mod tests {
                 base_command: "cargo".to_string(),
                 sub_command: "test".to_string(),
                 flags: vec!["--lib".to_string()],
+                connector: "".to_string(),
+                segment_index: 0,
                 normalized: "cargo test".to_string(),
             }]
         );
@@ -292,6 +343,8 @@ mod tests {
                 base_command: "git".to_string(),
                 sub_command: "commit".to_string(),
                 flags: vec!["-C".to_string(), "-m".to_string()],
+                connector: "".to_string(),
+                segment_index: 0,
                 normalized: "git commit".to_string(),
             }]
         );
@@ -323,6 +376,8 @@ mod tests {
                 base_command: "git".to_string(),
                 sub_command: "".to_string(),
                 flags: vec!["--version".to_string()],
+                connector: "".to_string(),
+                segment_index: 0,
                 normalized: "git".to_string(),
             }]
         );
@@ -361,6 +416,8 @@ mod tests {
                 base_command: "ls".to_string(),
                 sub_command: "".to_string(),
                 flags: vec!["-la".to_string()],
+                connector: "".to_string(),
+                segment_index: 0,
                 normalized: "ls".to_string(),
             }]
         );

@@ -14,8 +14,15 @@ pub struct NormalizedLog {
     /// 実行日時 (ISO8601 UTC)
     pub timestamp: String,
     pub session_id: String,
+    /// 1回のBashツール呼び出しのグループキー。複合コマンドの
+    /// チェーン復元とduration_msの重複排除に使う
+    pub tool_use_id: String,
     /// cwdのbasename。フルパスは個人情報を含みうるため残さない
     pub project: String,
+    /// 複合コマンド内の位置（0始まり）
+    pub segment_index: u32,
+    /// このセグメントの直前の演算子 ("" / "|" / "&&" / "||" / ";")
+    pub connector: String,
     pub base_command: String,
     pub sub_command: String,
     /// スペース区切りのフラグ名 (例: "--amend -m")。値は含まない
@@ -45,7 +52,10 @@ pub fn build_records(event: &HookEvent, timestamp: OffsetDateTime) -> Vec<Normal
         .map(|c| NormalizedLog {
             timestamp: timestamp.clone(),
             session_id: event.session_id.clone(),
+            tool_use_id: event.tool_use_id.clone(),
             project: project.clone(),
+            segment_index: c.segment_index,
+            connector: c.connector,
             base_command: c.base_command,
             sub_command: c.sub_command,
             flags: c.flags.join(" "),
@@ -67,6 +77,7 @@ mod tests {
                 "hook_event_name": "PostToolUse",
                 "tool_name": "Bash",
                 "session_id": "sess-test",
+                "tool_use_id": "toolu_abc",
                 "cwd": "/Users/me/Repository/c4",
                 "duration_ms": 49,
                 "tool_input": {{"command": {}}}
@@ -88,7 +99,10 @@ mod tests {
                 NormalizedLog {
                     timestamp: "2026-07-22T03:00:00Z".to_string(),
                     session_id: "sess-test".to_string(),
+                    tool_use_id: "toolu_abc".to_string(),
                     project: "c4".to_string(),
+                    segment_index: 0,
+                    connector: "".to_string(),
                     base_command: "git".to_string(),
                     sub_command: "commit".to_string(),
                     flags: "-m".to_string(),
@@ -99,7 +113,10 @@ mod tests {
                 NormalizedLog {
                     timestamp: "2026-07-22T03:00:00Z".to_string(),
                     session_id: "sess-test".to_string(),
+                    tool_use_id: "toolu_abc".to_string(),
                     project: "c4".to_string(),
+                    segment_index: 1,
+                    connector: "&&".to_string(),
                     base_command: "ls".to_string(),
                     sub_command: "".to_string(),
                     flags: "".to_string(),

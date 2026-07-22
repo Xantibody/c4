@@ -75,7 +75,10 @@ mod tests {
         let log = NormalizedLog {
             timestamp: "2026-07-22T03:00:00Z".to_string(),
             session_id: "sess-xxxx".to_string(),
+            tool_use_id: "toolu_abc".to_string(),
             project: "c4".to_string(),
+            segment_index: 0,
+            connector: "".to_string(),
             base_command: "git".to_string(),
             sub_command: "commit".to_string(),
             flags: "-m".to_string(),
