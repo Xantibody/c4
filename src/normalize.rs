@@ -101,7 +101,8 @@ fn collect_flags(tokens: &[String]) -> Vec<String> {
 
 fn flag_name(token: &str) -> Option<String> {
     if let Some(body) = token.strip_prefix("--") {
-        if body.is_empty() {
+        // `---` のような英数字で始まらないトークンはフラグではなくオペランド
+        if !body.starts_with(|c: char| c.is_ascii_alphanumeric()) {
             return None;
         }
         let name = body.split('=').next().expect("split yields at least one");
@@ -158,6 +159,12 @@ mod tests {
             flags("git commit --amend -m 'x' -m 'y'"),
             vec!["--amend", "-m"]
         );
+    }
+
+    #[test]
+    fn dash_only_tokens_are_not_flags() {
+        assert_eq!(flags("echo --- output"), Vec::<String>::new());
+        assert_eq!(flags("echo ----"), Vec::<String>::new());
     }
 
     #[test]
