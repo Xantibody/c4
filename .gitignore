@@ -1,3 +1,7 @@
 target/
 *.csv
 result
+.direnv/
+result-*
+*.jsonl
+.DS_Store
