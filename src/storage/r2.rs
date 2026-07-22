@@ -75,10 +75,13 @@ mod tests {
         let log = NormalizedLog {
             timestamp: "2026-07-22T03:00:00Z".to_string(),
             session_id: "sess-xxxx".to_string(),
+            project: "c4".to_string(),
             base_command: "git".to_string(),
             sub_command: "commit".to_string(),
             flags: "-m".to_string(),
             normalized_command: "git commit".to_string(),
+            duration_ms: Some(49),
+            status: "success".to_string(),
         };
         let key = R2Storage::object_key(&log);
         assert!(key.starts_with("logs/dt=2026-07-22/"));

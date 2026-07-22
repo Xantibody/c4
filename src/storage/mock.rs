@@ -37,10 +37,13 @@ mod tests {
         NormalizedLog {
             timestamp: "2026-07-22T03:00:00Z".to_string(),
             session_id: "sess-test".to_string(),
+            project: "c4".to_string(),
             base_command: normalized.split(' ').next().unwrap().to_string(),
             sub_command: "".to_string(),
             flags: "".to_string(),
             normalized_command: normalized.to_string(),
+            duration_ms: None,
+            status: "success".to_string(),
         }
     }
 
