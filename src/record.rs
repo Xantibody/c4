@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::hook::HookEvent;
 use crate::normalize::normalize;

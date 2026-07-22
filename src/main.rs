@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::process::{Command, Stdio};
 
-use claude_logger::record::{build_records, NormalizedLog};
+use claude_logger::record::{NormalizedLog, build_records};
 use claude_logger::{hook, storage};
 use time::OffsetDateTime;
 
