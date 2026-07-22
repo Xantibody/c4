@@ -1,45 +1,48 @@
 # c4 — Claude Code Command Collector
 
-Claude Code の PostToolUse hook から Bash コマンドを収集・正規化して
-Cloudflare R2 / ローカルCSV に永続化する CLI ツール。
+A CLI tool that collects Bash commands executed by Claude Code via the
+PostToolUse hook, normalizes them, and persists them to Cloudflare R2 or
+a local CSV file.
 
-コマンドの引数・パス・メッセージは保存前に切り捨てられるため、
-機密情報は永続化層に到達しない。設計の詳細は [docs/design.md](docs/design.md) を参照。
+Command arguments, file paths, and messages are stripped before persisting,
+so secrets never reach the storage layer. See [docs/design.md](docs/design.md)
+for the design details (Japanese).
 
-## ビルドと開発
+## Build and development
 
 ```sh
-# devShellに入る (direnvなら自動)
+# Enter the devShell (automatic with direnv)
 nix develop
 
-# 全チェック (clippy + fmt + test)
+# Run all checks (clippy + fmt + test)
 just check
 
-# CSVモードでのE2E動作確認
+# E2E check in CSV mode
 just smoke
 
-# リリースビルド
+# Release build
 nix build
 ```
 
-## インストールと Claude Code 連携
+## Installation and Claude Code integration
 
-flake input として取り込む（home-manager等）か、profileにインストールする:
+Consume it as a flake input (e.g. via home-manager) or install it into
+your profile:
 
 ```sh
 # nix profile
 nix profile install github:Xantibody/c4
 
-# home-manager: flake inputに追加してoverlay経由でhome.packagesへ
+# home-manager: add as a flake input and expose via an overlay
 #   inputs.c4.url = "github:Xantibody/c4";
 #   (final: _: { c4 = inputs.c4.packages.${final.system}.default; })
 ```
 
-PATHに入っていれば hook からは素の `c4` で呼べる。
+Once it is on your PATH, the hook can invoke it as plain `c4`.
 
-インストールせずに `nix run` で直接呼ぶこともできる（初回はビルドが走る。
-hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を払うため、
-気になる場合は上記のインストールを推奨）:
+You can also run it directly with `nix run` without installing (the first
+run triggers a build; every hook invocation then pays flake evaluation
+overhead of a few hundred ms, so installation is recommended):
 
 ```json
 {
@@ -48,7 +51,8 @@ hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を
 }
 ```
 
-`~/.claude/settings.json` に hook を登録する（[examples/settings.json](examples/settings.json)）:
+Register the hook in `~/.claude/settings.json`
+(see [examples/settings.json](examples/settings.json)):
 
 ```json
 {
@@ -79,7 +83,7 @@ hookは実行のたびにflake評価のオーバーヘッド（数百ms〜）を
 }
 ```
 
-R2 に保存する場合は環境変数を切り替える:
+To persist to R2 instead, switch the environment variables:
 
 ```sh
 STORAGE_TYPE=r2 \
@@ -89,7 +93,7 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... \
 c4
 ```
 
-## 収集されるレコード
+## Collected records
 
 ```csv
 timestamp,session_id,tool_use_id,project,segment_index,connector,base_command,sub_command,flags,normalized_command,duration_ms,status
@@ -98,8 +102,9 @@ timestamp,session_id,tool_use_id,project,segment_index,connector,base_command,su
 2026-07-22T03:04:36Z,sess-local,toolu_x,c4,2,|,grep,,,grep,49,success
 ```
 
-`tool_use_id` + `segment_index` + `connector` で複合コマンドのチェーンを
-分析時に復元できる（`cat | grep` → `rg` のような置換候補の検出に使う）。
+`tool_use_id` + `segment_index` + `connector` let you reconstruct compound
+command chains at analysis time (used to detect replacement candidates such
+as `cat | grep` → `rg`).
 
-失敗したコマンドは `PostToolUseFailure` イベント経由で `status=failure` として
-記録される（両イベントに同じhookを登録する）。
+Failed commands are recorded with `status=failure` via the
+`PostToolUseFailure` event (register the same hook on both events).

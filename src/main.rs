@@ -15,19 +15,19 @@ use time::OffsetDateTime;
 const USAGE: &str = "\
 c4 — Claude Code Command Collector
 
-Claude Code の PostToolUse / PostToolUseFailure hook から呼ばれ、
-stdin の JSON を読んで Bash コマンドを正規化・保存する。
-手動で対話実行するツールではない。
+Invoked by Claude Code's PostToolUse / PostToolUseFailure hooks.
+Reads the hook JSON from stdin, then normalizes and persists the Bash
+command. Not meant to be run interactively.
 
 USAGE:
-    echo '<hook JSON>' | c4        hookイベントを処理して保存
-    c4 --persist                   (内部用) レコードJSONをstdinから読んで永続化
-    c4 --help                      このヘルプを表示
+    echo '<hook JSON>' | c4        process a hook event and persist it
+    c4 --persist                   (internal) read record JSON from stdin and store it
+    c4 --help                      show this help
 
 ENV:
     STORAGE_TYPE   r2 / csv / mock (default: csv)
-    CSV_PATH       CSV出力先 (default: c4.csv)
-    C4_DUMP        生ペイロードの退避先 (スキーマ調査用・機密がそのまま残る)
+    CSV_PATH       CSV output path (default: c4.csv)
+    C4_DUMP        raw payload dump path (schema debugging; contains secrets verbatim)
     R2_BUCKET / R2_ENDPOINT / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
 ";
 
