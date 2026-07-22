@@ -39,14 +39,18 @@ pub fn normalize(command: &str) -> Vec<NormalizedCommand> {
         .collect()
 }
 
-/// クォート外の `;` `|` `||` `&&` で複合コマンドを分割し、
+/// クォート外の `;` `|` `||` `&&` および改行で複合コマンドを分割し、
 /// 各セグメントを（直前の演算子, セグメント文字列）のペアで返す。
+/// 改行は `;` と同義として扱う。heredoc（`<<DELIM`）の本文は
+/// コマンドではないため終端デリミタまで読み飛ばす。
 /// トークン化前の生文字列を走査するため、`echo hi;ls` のような
 /// 密着した区切りも扱える。`2>&1` の単独 `&` は区切りとしない。
 fn split_segments(command: &str) -> Vec<(String, String)> {
     let mut segments = vec![(String::new(), String::new())];
     let mut chars = command.chars().peekable();
     let (mut in_single, mut in_double) = (false, false);
+    // 行末に達したら本文スキップに入るheredocデリミタ
+    let mut pending_heredoc: Option<String> = None;
     while let Some(c) = chars.next() {
         let quoted = in_single || in_double;
         match c {
@@ -61,6 +65,28 @@ fn split_segments(command: &str) -> Vec<(String, String)> {
             }
             ';' if !quoted => {
                 segments.push((";".to_string(), String::new()));
+                continue;
+            }
+            '\n' if !quoted => {
+                if let Some(delim) = pending_heredoc.take() {
+                    skip_heredoc_body(&mut chars, &delim);
+                }
+                segments.push((";".to_string(), String::new()));
+                continue;
+            }
+            '<' if !quoted && chars.peek() == Some(&'<') => {
+                chars.next();
+                if chars.peek() == Some(&'<') {
+                    // herestring `<<<` はheredocではない
+                    chars.next();
+                    segments.last_mut().expect("never empty").1.push_str("<<<");
+                    continue;
+                }
+                if let Some(delim) = read_heredoc_delimiter(&mut chars) {
+                    pending_heredoc = Some(delim);
+                } else {
+                    segments.last_mut().expect("never empty").1.push_str("<<");
+                }
                 continue;
             }
             '|' if !quoted => {
@@ -83,6 +109,44 @@ fn split_segments(command: &str) -> Vec<(String, String)> {
         segments.last_mut().expect("never empty").1.push(c);
     }
     segments
+}
+
+/// `<<` の直後からheredocデリミタを読み取る。`-`（インデント許容）と
+/// クォートは読み飛ばし、英数字とアンダースコアの並びをデリミタとする
+fn read_heredoc_delimiter(chars: &mut std::iter::Peekable<std::str::Chars>) -> Option<String> {
+    if chars.peek() == Some(&'-') {
+        chars.next();
+    }
+    let quote = matches!(chars.peek(), Some('\'' | '"')).then(|| chars.next());
+    let mut delim = String::new();
+    while let Some(&c) = chars.peek() {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            delim.push(c);
+            chars.next();
+        } else {
+            break;
+        }
+    }
+    if quote.is_some() && matches!(chars.peek(), Some('\'' | '"')) {
+        chars.next();
+    }
+    (!delim.is_empty()).then_some(delim)
+}
+
+/// heredoc本文をデリミタ行まで読み飛ばす。デリミタが現れなければ
+/// 残り全部を消費する（本文はコマンドではないので安全側）
+fn skip_heredoc_body(chars: &mut std::iter::Peekable<std::str::Chars>, delim: &str) {
+    let mut line = String::new();
+    for c in chars.by_ref() {
+        if c == '\n' {
+            if line == delim || line.trim_start_matches('\t') == delim {
+                return;
+            }
+            line.clear();
+        } else {
+            line.push(c);
+        }
+    }
 }
 
 fn normalize_segment(tokens: &[String]) -> Option<NormalizedCommand> {
@@ -311,6 +375,43 @@ mod tests {
                 ("||", 4, "echo"),
             ]
         );
+    }
+
+    #[test]
+    fn newline_splits_segments_like_semicolon() {
+        let records = normalize("cargo fmt\ncargo test");
+        let chain: Vec<(&str, &str)> = records
+            .iter()
+            .map(|r| (r.connector.as_str(), r.normalized.as_str()))
+            .collect();
+        assert_eq!(chain, vec![("", "cargo fmt"), (";", "cargo test")]);
+    }
+
+    #[test]
+    fn blank_lines_do_not_create_records() {
+        assert_eq!(normalize("ls\n\n\npwd").len(), 2);
+    }
+
+    #[test]
+    fn quoted_newline_is_not_split() {
+        let records = normalize("printf 'a\nb' file");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].normalized, "printf");
+    }
+
+    #[test]
+    fn heredoc_body_is_skipped() {
+        let records =
+            normalize("cat > /tmp/x.go <<'EOF'\npackage main\nfunc main() {}\nEOF\necho done");
+        let normalized: Vec<&str> = records.iter().map(|r| r.normalized.as_str()).collect();
+        assert_eq!(normalized, vec!["cat", "echo"]);
+    }
+
+    #[test]
+    fn unquoted_heredoc_delimiter_is_recognized() {
+        let records = normalize("tee /tmp/y <<EOF\nsome content\nEOF\nls");
+        let normalized: Vec<&str> = records.iter().map(|r| r.normalized.as_str()).collect();
+        assert_eq!(normalized, vec!["tee", "ls"]);
     }
 
     #[test]
