@@ -172,6 +172,44 @@ pub struct FileState {
     pub pending: Vec<ConductLog>,
 }
 
+/// dir以下の*.jsonl（subagents/含む）を差分スキャンし、stateを
+/// 更新して新規レコードを返す。cleanupPeriodDaysでローテートされて
+/// 消えたファイルのエントリはstateから落とす
+pub fn scan_dir(dir: &std::path::Path, state: &mut ScanState) -> anyhow::Result<Vec<ConductLog>> {
+    let mut files = Vec::new();
+    walk(dir, &mut files)?;
+    files.sort();
+    let mut records = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for path in files {
+        let key = path.to_string_lossy().into_owned();
+        seen.insert(key.clone());
+        let entry = state.files.entry(key).or_default();
+        let content = std::fs::read_to_string(&path)?;
+        let outcome = scan(
+            content.lines().skip(entry.lines),
+            std::mem::take(&mut entry.pending),
+        );
+        entry.lines += outcome.lines_seen;
+        entry.pending = outcome.pending;
+        records.extend(outcome.records);
+    }
+    state.files.retain(|k, _| seen.contains(k));
+    Ok(records)
+}
+
+fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) -> anyhow::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            walk(&path, out)?;
+        } else if path.extension().is_some_and(|e| e == "jsonl") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,8 +260,18 @@ mod tests {
     #[test]
     fn is_error_result_is_a_failure() {
         let lines = [
-            use_line("2026-07-24T15:00:00Z", "toolu_2", "Bash", r#"{"command":"cargo test"}"#),
-            result_line("2026-07-24T15:00:03Z", "toolu_2", r#","is_error":true"#, r#""Exit code 1""#),
+            use_line(
+                "2026-07-24T15:00:00Z",
+                "toolu_2",
+                "Bash",
+                r#"{"command":"cargo test"}"#,
+            ),
+            result_line(
+                "2026-07-24T15:00:03Z",
+                "toolu_2",
+                r#","is_error":true"#,
+                r#""Exit code 1""#,
+            ),
         ];
         let outcome = scan(&lines, vec![]);
         assert_eq!(outcome.records[0].status, "failure");
@@ -233,7 +281,12 @@ mod tests {
     #[test]
     fn interrupted_result_is_distinguished_from_failure() {
         let lines = [
-            use_line("2026-07-24T15:00:00Z", "toolu_3", "Bash", r#"{"command":"sleep 100"}"#),
+            use_line(
+                "2026-07-24T15:00:00Z",
+                "toolu_3",
+                "Bash",
+                r#"{"command":"sleep 100"}"#,
+            ),
             result_line(
                 "2026-07-24T15:00:09Z",
                 "toolu_3",
@@ -247,7 +300,12 @@ mod tests {
     #[test]
     fn unmatched_use_is_carried_as_pending_and_resolved_next_scan() {
         let first = scan(
-            [use_line("2026-07-24T15:00:00Z", "toolu_4", "Write", r#"{"file_path":"/a/b.rs"}"#)],
+            [use_line(
+                "2026-07-24T15:00:00Z",
+                "toolu_4",
+                "Write",
+                r#"{"file_path":"/a/b.rs"}"#,
+            )],
             vec![],
         );
         assert_eq!(first.records, vec![]);
@@ -264,8 +322,13 @@ mod tests {
 
     #[test]
     fn sidechain_lines_are_marked_as_such() {
-        let line = use_line("2026-07-24T15:00:00Z", "toolu_5", "Grep", r#"{"pattern":"x"}"#)
-            .replace(r#""isSidechain":false"#, r#""isSidechain":true"#);
+        let line = use_line(
+            "2026-07-24T15:00:00Z",
+            "toolu_5",
+            "Grep",
+            r#"{"pattern":"x"}"#,
+        )
+        .replace(r#""isSidechain":false"#, r#""isSidechain":true"#);
         assert_eq!(scan([line], vec![]).pending[0].source, "sidechain");
     }
 
@@ -277,7 +340,74 @@ mod tests {
             r#"{"type":"summary","summary":"compacted"}"#.to_string(),
         ];
         let outcome = scan(&lines, vec![]);
-        assert_eq!(outcome, ScanOutcome { records: vec![], pending: vec![], lines_seen: 3 });
+        assert_eq!(
+            outcome,
+            ScanOutcome {
+                records: vec![],
+                pending: vec![],
+                lines_seen: 3
+            }
+        );
+    }
+
+    #[test]
+    fn scan_dir_is_incremental_and_prunes_rotated_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = dir.path().join("proj").join("sess.jsonl");
+        std::fs::create_dir_all(session.parent().unwrap()).unwrap();
+        std::fs::write(
+            &session,
+            format!(
+                "{}\n{}\n",
+                use_line(
+                    "2026-07-24T15:00:00Z",
+                    "toolu_a",
+                    "Bash",
+                    r#"{"command":"ls"}"#
+                ),
+                result_line("2026-07-24T15:00:01Z", "toolu_a", "", "{}"),
+            ),
+        )
+        .unwrap();
+        let mut state = ScanState::default();
+
+        let first = scan_dir(dir.path(), &mut state).unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(
+            state.files[&session.to_string_lossy().into_owned()].lines,
+            2
+        );
+
+        // 追記された分だけが次のスキャンで拾われる
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&session)
+            .unwrap();
+        use std::io::Write;
+        writeln!(
+            file,
+            "{}",
+            use_line(
+                "2026-07-24T15:01:00Z",
+                "toolu_b",
+                "Read",
+                r#"{"file_path":"/a/b.rs"}"#
+            )
+        )
+        .unwrap();
+        let second = scan_dir(dir.path(), &mut state).unwrap();
+        assert_eq!(second, vec![]);
+        assert_eq!(
+            state.files[&session.to_string_lossy().into_owned()]
+                .pending
+                .len(),
+            1
+        );
+
+        // ローテートで消えたファイルはstateからも消える
+        std::fs::remove_file(&session).unwrap();
+        scan_dir(dir.path(), &mut state).unwrap();
+        assert_eq!(state.files.len(), 0);
     }
 
     #[test]
@@ -285,7 +415,10 @@ mod tests {
         let mut state = ScanState::default();
         state.files.insert(
             "a.jsonl".to_string(),
-            FileState { lines: 42, pending: vec![] },
+            FileState {
+                lines: 42,
+                pending: vec![],
+            },
         );
         let json = serde_json::to_string(&state).unwrap();
         assert_eq!(serde_json::from_str::<ScanState>(&json).unwrap(), state);

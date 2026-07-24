@@ -21,6 +21,7 @@ command. Not meant to be run interactively.
 
 USAGE:
     echo '<hook JSON>' | c4        process a hook event and persist it
+    c4 transcript                  scan Claude Code transcripts into conduct records
     c4 --persist                   (internal) read record JSON from stdin and store it
     c4 --help                      show this help
 
@@ -29,12 +30,23 @@ ENV:
     CSV_PATH       CSV output path (default: c4.csv)
     C4_DUMP        raw payload dump path (schema debugging; contains secrets verbatim)
     R2_BUCKET / R2_ENDPOINT / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+
+    C4_TRANSCRIPT_DIR    transcript root (default: ~/.claude/projects)
+    CONDUCT_CSV_PATH     conduct CSV output (default: c4_conduct.csv)
+    CONDUCT_STATE_PATH   incremental scan state (default: c4_conduct_state.json)
 ";
 
 fn main() {
     match std::env::args().nth(1).as_deref() {
         Some("--help" | "-h") => {
             print!("{USAGE}");
+            return;
+        }
+        Some("transcript") => {
+            if let Err(e) = collect_transcripts() {
+                eprintln!("c4: transcript scan failed: {e:#}");
+                std::process::exit(1);
+            }
             return;
         }
         Some("--persist") => {
@@ -106,6 +118,36 @@ fn dump_raw_payload(input: &str) {
     if let Err(e) = result {
         eprintln!("c4: dump failed: {e}");
     }
+}
+
+/// バッチモード: トランスクリプトを差分スキャンしてConductLogをCSVへ追記する。
+/// hookと違いユーザー（またはcron）が直接叩くため、エラーは隠さず
+/// 非0終了で返す。stateファイルが読み取り位置と未解決ペアを持つので
+/// 何度実行しても重複レコードは生じない
+fn collect_transcripts() -> anyhow::Result<()> {
+    let dir = std::env::var("C4_TRANSCRIPT_DIR").unwrap_or_else(|_| {
+        let home = std::env::var("HOME").unwrap_or_default();
+        format!("{home}/.claude/projects")
+    });
+    let csv_path = std::env::var("CONDUCT_CSV_PATH").unwrap_or_else(|_| "c4_conduct.csv".into());
+    let state_path =
+        std::env::var("CONDUCT_STATE_PATH").unwrap_or_else(|_| "c4_conduct_state.json".into());
+
+    let mut state = match std::fs::read_to_string(&state_path) {
+        Ok(s) => serde_json::from_str(&s)
+            .map_err(|e| anyhow::anyhow!("corrupt state file {state_path}: {e}"))?,
+        Err(_) => c4::transcript::ScanState::default(),
+    };
+    let records = c4::transcript::scan_dir(std::path::Path::new(&dir), &mut state)?;
+    if !records.is_empty() {
+        storage::csv_append(std::path::Path::new(&csv_path), &records)?;
+    }
+    std::fs::write(&state_path, serde_json::to_vec(&state)?)?;
+    println!(
+        "c4: appended {} conduct records to {csv_path} (scanned {dir})",
+        records.len()
+    );
+    Ok(())
 }
 
 /// 子モード: stdinからレコード配列を受け取りストレージへ保存する
