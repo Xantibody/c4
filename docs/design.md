@@ -136,6 +136,8 @@ src/
 ├── hook.rs          # stdin JSONのパース (HookEvent)
 ├── normalize.rs     # コマンド正規化（純粋関数・単体テストの主戦場）
 ├── record.rs        # NormalizedLog の組み立て（純粋関数）
+├── conduct.rs       # ConductLog + ツール別入力正規化（純粋関数）
+├── transcript.rs    # トランスクリプトJSONLのスキャンとペアリング
 └── storage/
     ├── mod.rs       # Storageトレイト + STORAGE_TYPEによるファクトリ
     ├── csv.rs       # ローカルCSVへ追記
@@ -180,6 +182,9 @@ DuckDB からは `read_json_auto('s3://bucket/logs/dt=*/*.jsonl')` のように
 | `R2_BUCKET`                                   | R2バケット名 (r2時必須)                | -                   |
 | `R2_ENDPOINT`                                 | R2のS3互換エンドポイント (r2時必須)    | -                   |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | R2認証情報 (aws-sdkが標準参照)         | -                   |
+| `C4_TRANSCRIPT_DIR`                           | transcriptモードの走査ルート           | `~/.claude/projects` |
+| `CONDUCT_CSV_PATH`                            | ConductLogのCSV出力先                  | `c4_conduct.csv`    |
+| `CONDUCT_STATE_PATH`                          | 差分スキャンの状態ファイル             | `c4_conduct_state.json` |
 
 ## 6. Claude Code 連携設定
 
@@ -235,3 +240,52 @@ DuckDB からは `read_json_auto('s3://bucket/logs/dt=*/*.jsonl')` のように
 - ストレージは `MockStorage`（インメモリ）と `CsvStorage`（tempdir実書き込み）
   を単体テスト。`R2Storage` はキー生成のみ単体テストし、PUT自体は実環境で確認。
 - E2E は `just smoke`（CSVモードで hook JSON を流し込み、出力を確認）。
+
+## 9. Conduct 収集（トランスクリプト直読み）
+
+`c4 transcript` は hook を経由せず、Claude Code のトランスクリプト
+（`~/.claude/projects/**/*.jsonl`、`subagents/` 含む）を直接スキャンして
+**全ツールの行動**を 1 tool_use = 1 レコードで収集する。
+
+```text
+[~/.claude/projects/**/*.jsonl]
+   │  c4 transcript（cron / 手動。hookではないため遅延制約なし）
+   ▼
+[transcript::scan_dir]  … 状態ファイルで差分読み・pending持ち越し
+   │  assistant行の tool_use と user行の tool_result を tool_use_id で突合
+   ▼
+[conduct::normalize_tool_input]  … ツール別に「形」だけ残す
+   ▼
+[CONDUCT_CSV_PATH へ追記]
+```
+
+### 盲検設計
+
+分析（c4-analyze スキル側）はタスク文脈なしの盲検で行う前提のため、
+レコードは構造的に文脈を持てない形にする:
+
+- 生の引数・検索パターン・プロンプト・ファイル内容は一切残さない
+- パスはセッションIDをソルトにした FNV-1a 64bit ハッシュ（`path_hash`）に
+  落とす。同一セッション内の「同じファイルに再訪したか」は等値比較で
+  分析できるが、パス自体は復元できない。拡張子のみ `path_kind` に残す
+- Bash は既存の `normalize` を通した連鎖（例: `cat | grep`）を `detail` に
+  畳む。Read は `offset`/`limit` の**有無**、Grep は `output_mode` と
+  オプション名、Agent は `subagent_type` のみ。未知のツールは名前だけ
+
+### 差分スキャンと冪等性
+
+状態ファイル（`CONDUCT_STATE_PATH`）にファイルごとの処理済み行数と、
+結果行が未出現の tool_use ドラフト（pending）を保持する。セッション
+ファイルは追記型なので、次回は差分行だけを読み、持ち越した pending を
+先に解決する。これにより cron で何度実行しても重複レコードは生じない。
+ローテートで消えたファイルのエントリは自動で落とす。
+
+### 制約
+
+- `duration_ms` は tool_use 行と結果行の timestamp 差の近似値で、
+  **permission プロンプトの待ち時間を含む**。厳密な実行時間が必要な
+  分析には hook 側の `duration_ms`（NormalizedLog）を使う
+- トランスクリプトは `cleanupPeriodDays`（既定30日）で消えるため、
+  少なくともその周期より短い間隔でスキャンを回す
+- ユーザーによる中断は `status=interrupted` として failure と区別する
+  （行動修正シグナルとして分析価値があるため）

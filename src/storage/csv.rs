@@ -6,6 +6,24 @@ use crate::record::NormalizedLog;
 
 use super::Storage;
 
+/// 任意のフラットレコード列をCSVへAppend-onlyで書く。
+/// ファイルが無ければヘッダ行を書く。NormalizedLog / ConductLog 共用。
+pub fn append<T: serde::Serialize>(path: &std::path::Path, rows: &[T]) -> anyhow::Result<()> {
+    let write_header = !path.exists();
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    let mut writer = csv::WriterBuilder::new()
+        .has_headers(write_header)
+        .from_writer(file);
+    for row in rows {
+        writer.serialize(row)?;
+    }
+    writer.flush()?;
+    Ok(())
+}
+
 /// ローカルCSVへのAppend-only保存。ファイルが無ければヘッダ行を書く。
 #[derive(Debug)]
 pub struct CsvStorage {
@@ -26,19 +44,7 @@ impl CsvStorage {
 #[async_trait]
 impl Storage for CsvStorage {
     async fn save(&self, logs: &[NormalizedLog]) -> anyhow::Result<()> {
-        let write_header = !self.path.exists();
-        let file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)?;
-        let mut writer = csv::WriterBuilder::new()
-            .has_headers(write_header)
-            .from_writer(file);
-        for log in logs {
-            writer.serialize(log)?;
-        }
-        writer.flush()?;
-        Ok(())
+        append(&self.path, logs)
     }
 }
 

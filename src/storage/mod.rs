@@ -2,7 +2,7 @@ mod csv;
 mod mock;
 mod r2;
 
-pub use csv::CsvStorage;
+pub use csv::{CsvStorage, append as csv_append};
 pub use mock::MockStorage;
 pub use r2::R2Storage;
 
