@@ -108,3 +108,30 @@ as `cat | grep` → `rg`).
 
 Failed commands are recorded with `status=failure` via the
 `PostToolUseFailure` event (register the same hook on both events).
+
+## Conduct collection (all tools, transcript-based)
+
+`c4 transcript` scans the Claude Code transcripts under
+`~/.claude/projects` (including `subagents/`) and records one row per
+tool call — Read, Edit, Grep, Agent and everything else, not just Bash:
+
+```sh
+CONDUCT_CSV_PATH=$HOME/.claude/c4_conduct.csv \
+CONDUCT_STATE_PATH=$HOME/.claude/c4_conduct_state.json \
+c4 transcript
+```
+
+```csv
+timestamp,session_id,tool_use_id,project,source,tool_name,detail,path_hash,path_kind,duration_ms,status,effort
+2026-07-24T15:38:14.000Z,sess-1,toolu_x,c4,main,Read,limit,90f4c2a1b8e3d576,rs,719,success,high
+2026-07-24T15:00:00Z,sess-1,toolu_y,c4,main,Bash,git commit && ls,,,3000,failure,high
+```
+
+Records are blind by construction: raw arguments, patterns, and prompts
+are never persisted. File identity survives as a session-salted hash
+(`path_hash`) so same-file access patterns stay analyzable. A state file
+tracks per-file offsets, so repeated runs (e.g. via cron) append no
+duplicates. Caveats: `duration_ms` is the timestamp delta between the
+tool call and its result (it includes permission-prompt wait time), and
+transcripts rotate after `cleanupPeriodDays` (default 30 days), so run
+the scan at least that often.
